@@ -1,15 +1,17 @@
 import { Contract, Signer } from "ethers";
 import { ethers, upgrades } from "hardhat";
 import "@nomiclabs/hardhat-ethers";
+import { log } from "console";
 
 async function main() {
     const signers: Signer[] = await ethers.getSigners()
     
-    const CappedRangeNFT = await ethers.getContractFactory("CappedRangeNFT", signers[1]);
 
-    const cappedRangeNFT = await CappedRangeNFT.deploy();
-    console.log("cappedRangeNFT deployed to:", cappedRangeNFT.address);
-    // await dogEatDogWorldNFT.initialize();
+    const CappedRangeNFT = await ethers.getContractFactory("CappedRangeNFT", signers[1]);
+    const cappedRangeNFT = await upgrades.deployProxy(CappedRangeNFT);
+    await cappedRangeNFT.deployed();
+
+    console.log("Deployed Address",cappedRangeNFT.address);
 }
 
 main()

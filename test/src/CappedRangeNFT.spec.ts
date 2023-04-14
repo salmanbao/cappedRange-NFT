@@ -31,24 +31,47 @@ describe("CappedRangeNFT Token", function () {
 
 
     const CappedRangeNFT = await ethers.getContractFactory("CappedRangeNFT", owner);
+    cappedRangeNFT = await upgrades.deployProxy(CappedRangeNFT);
+    await cappedRangeNFT.deployed();
 
-    cappedRangeNFT = await CappedRangeNFT.deploy();
   });
 
 
- 
+  // Test Case Run using Decrease Limit 
+  // uint256 public constant MAX_SUPPLY = 105;
+  // uint256 public constant OG_MINT_LIMIT = 4;
+  // Rnadom Numbr generator generate number in  % 4
+
 
   it("MerkleTree Creationn And Set Markle Tree Root", async function () {
 
-    whiteListedAddresses = [owner, user1, user3, user5 ,user4];
+    whiteListedAddresses = [owner, user1, user3, user5, user4];
 
     const leafNodes = whiteListedAddresses.map((x: SignerWithAddress) => keccak256(x.address));
     mtree = new MerkleTree(leafNodes, keccak256, { sort: true });
     root = mtree.getHexRoot()
 
     await cappedRangeNFT.connect(owner).setOGMerkelRoot(root)
+  })
+
+  it("Sale is currently paused", async function () {
+
+    for (let i = 0; i < whiteListedAddresses.length - 1; i++) {
+      const leaf = keccak256(whiteListedAddresses[i].address)
+      const proof = mtree.getHexProof(leaf)
+      await expect(cappedRangeNFT.connect(whiteListedAddresses[i]).ogMint(proof)).to.be.revertedWith("Sale is currently paused");
+    }
+
+  })
+
+  it("Sale is  unpaused", async function () {
 
     await cappedRangeNFT.connect(owner).unpauseSale();
+
+  })
+
+
+  it("Mint NFT", async function () {
 
 
     for (let i = 0; i < whiteListedAddresses.length - 1; i++) {
@@ -61,9 +84,9 @@ describe("CappedRangeNFT Token", function () {
 
   it("USER_NOT_OG_PLAYER", async function () {
 
-      const leaf = keccak256(user2.address)
-      const proof = mtree.getHexProof(leaf)
-      await expect(cappedRangeNFT.connect(user2).ogMint(proof)).to.be.revertedWith("USER_NOT_OG_PLAYER()");
+    const leaf = keccak256(user2.address)
+    const proof = mtree.getHexProof(leaf)
+    await expect(cappedRangeNFT.connect(user2).ogMint(proof)).to.be.revertedWith("USER_NOT_OG_PLAYER()");
 
   })
 
@@ -73,13 +96,19 @@ describe("CappedRangeNFT Token", function () {
     const proof = mtree.getHexProof(leaf)
     await expect(cappedRangeNFT.connect(user4).ogMint(proof)).to.be.revertedWith("OG_MINT_LIMIT_REACHED()");
 
-})
+  })
 
   it("ALREADY_MINTED_NFT", async function () {
 
     const leaf = keccak256(user1.address)
     const proof = mtree.getHexProof(leaf)
     await expect(cappedRangeNFT.connect(user1).ogMint(proof)).to.be.revertedWith("ALREADY_MINTED_NFT()");
+
+  })
+
+  it("Sale Pause", async function () {
+
+    await cappedRangeNFT.connect(owner).pauseSale();
 
   })
 
@@ -105,18 +134,36 @@ describe("CappedRangeNFT Token", function () {
 
     await cappedRangeNFT.connect(owner).setWhiteListMerkelRoot(root)
 
-    for (let i = 0; i < whiteListedAddresses.length; i++) {
-      const leaf = keccak256(whiteListedAddresses[i].address)
-      const proof = mtree.getHexProof(leaf)
-      await expect(cappedRangeNFT.connect(whiteListedAddresses[i]).whiteListedMint(proof, 5, { value: parseEther("0.05") })).to.be.revertedWith("PHASE_NOT_STARTED_YET()");
-    }
+  })
+
+  it("Sale is  unpaused", async function () {
+
+    await cappedRangeNFT.connect(owner).unpauseSale();
 
   })
+
+it("PHASE_NOT_STARTED_YET",async function () {
+  
+  for (let i = 0; i < whiteListedAddresses.length; i++) {
+    const leaf = keccak256(whiteListedAddresses[i].address)
+    const proof = mtree.getHexProof(leaf)
+    await expect(cappedRangeNFT.connect(whiteListedAddresses[i]).whiteListedMint(proof, 5, { value: parseEther("0.05") })).to.be.revertedWith("PHASE_NOT_STARTED_YET()");
+  }
+
+})
+
+it("Next Phase not started Yet", async function () {
+
+  await expect(cappedRangeNFT.publicMint(5, { value: parseEther("0.05") })).to.be.revertedWith("PHASE_NOT_STARTED_YET()");
+
+})
+
+
   it("USER_NOT_WHITELISTED", async function () {
 
     const leaf = keccak256(user1.address)
     const proof = mtree.getHexProof(leaf)
-    await expect(cappedRangeNFT.connect(user1).whiteListedMint(proof,5,{ value: parseEther("0.05") })).to.be.revertedWith("USER_NOT_WHITELISTED()");
+    await expect(cappedRangeNFT.connect(user1).whiteListedMint(proof, 5, { value: parseEther("0.05") })).to.be.revertedWith("USER_NOT_WHITELISTED()");
 
   })
 
@@ -126,22 +173,25 @@ describe("CappedRangeNFT Token", function () {
 
   })
 
+
+
   it("Next Phase White List Phase", async function () {
 
     await cappedRangeNFT.connect(owner).changePhase(1)
 
   })
 
-  it("MerkleTree Creationn And Set Markle Tree Root For White List User", async function () {
+  it("Mint NFT OVER range", async function () {
 
+    for (let i = 0; i < whiteListedAddresses.length; i++) {
+      const leaf = keccak256(whiteListedAddresses[i].address)
+      const proof = mtree.getHexProof(leaf)
+      await expect(cappedRangeNFT.connect(whiteListedAddresses[i]).whiteListedMint(proof, 11, { value: parseEther("0.05") })).to.be.revertedWith("MAX_MINT_LIMIT_INCREASE()");
+    }
 
-    whiteListedAddresses = [owner, user2, user4, user6];
+  })
 
-    const leafNodes = whiteListedAddresses.map((x: SignerWithAddress) => keccak256(x.address));
-    mtree = new MerkleTree(leafNodes, keccak256, { sort: true });
-    root = mtree.getHexRoot()
-
-    await cappedRangeNFT.connect(owner).setWhiteListMerkelRoot(root)
+  it("Mint NFT in White List Phase", async function () {
 
     for (let i = 0; i < whiteListedAddresses.length; i++) {
       const leaf = keccak256(whiteListedAddresses[i].address)
@@ -159,7 +209,7 @@ describe("CappedRangeNFT Token", function () {
   })
 
 
-  it(" Next Phase Public  Phase ", async function () {
+  it(" Next Phase Started Public Phase ", async function () {
 
     await cappedRangeNFT.connect(owner).changePhase(2)
 
@@ -185,10 +235,9 @@ describe("CappedRangeNFT Token", function () {
 
   })
 
-  it("Sale Pause", async function () { 
+  it("Sale Pause", async function () {
 
     await cappedRangeNFT.connect(owner).pauseSale();
-
 
   })
 
@@ -202,9 +251,8 @@ describe("CappedRangeNFT Token", function () {
 
     await cappedRangeNFT.connect(owner).unpauseSale();
 
-
   })
-  
+
   it("MINT NFT", async function () {
 
     await cappedRangeNFT.publicMint(1, { value: parseEther("0.05") });

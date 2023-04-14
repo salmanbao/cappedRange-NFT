@@ -1,19 +1,23 @@
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
-import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-import "hardhat/console.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/math/SafeMathUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/cryptography/MerkleProofUpgradeable.sol";
 
-contract CappedRangeNFT is ERC721 {
-    using SafeMath for uint256;
+contract CappedRangeNFT is
+    Initializable,
+    ERC721Upgradeable
+    
+{
+     using SafeMathUpgradeable for uint256;
 
     // State variables
     address public owner;
-    uint256 public constant MAX_SUPPLY = 105;
+    uint256 public constant MAX_SUPPLY = 8192;
     uint256 public constant MINT_FEE = 0.05 ether;
-    uint256 public constant OG_MINT_LIMIT = 4;
+    uint256 public constant OG_MINT_LIMIT = 128;
     uint256 public constant MAX_MINT_LIMIT = 10;
     uint256 public totalMinted;
     bool public salePaused;
@@ -25,7 +29,6 @@ contract CappedRangeNFT is ERC721 {
     // Base URL string
     string private baseURL;
 
-    uint256 private nonce = 0;
 
     mapping(uint256 => bool) public whitelistNumber;
 
@@ -49,12 +52,16 @@ contract CappedRangeNFT is ERC721 {
     error USER_NOT_OG_PLAYER();
     error MAX_MINT_LIMIT_INCREASE();
 
-    // Constructor
-    constructor() ERC721("Capped Range", "CR") {
+  
+
+    function initialize() public initializer {
+        __ERC721_init("Capped Range", "CR");
         owner = msg.sender;
         currentPhase = PhasesEnum.OG;
         salePaused = true; // Sale paused at deployment
-    }
+
+       }
+
 
     // Modifiers
     modifier onlyOwner() {
@@ -139,8 +146,9 @@ contract CappedRangeNFT is ERC721 {
         bytes32[] calldata _merkleProof,
         uint256 _noOfMint
     ) external payable saleNotPaused {
+        if(_noOfMint > MAX_MINT_LIMIT) revert MAX_MINT_LIMIT_INCREASE();
         if (
-            MerkleProof.verify(
+            MerkleProofUpgradeable.verify(
                 _merkleProof,
                 whiteListMerkleRoot,
                 keccak256(abi.encodePacked(msg.sender))
@@ -159,7 +167,7 @@ contract CappedRangeNFT is ERC721 {
 
     function ogMint(bytes32[] calldata _merkleProof) external saleNotPaused {
         if (
-            MerkleProof.verify(
+            MerkleProofUpgradeable.verify(
                 _merkleProof,
                 oGMerkleRoot,
                 keccak256(abi.encodePacked(msg.sender))
@@ -187,6 +195,7 @@ contract CappedRangeNFT is ERC721 {
     }
 
     function generateRandomNumber() public returns (uint256) {
+      uint256  nonce = 0;
         uint256 randomNumber = uint256(
             keccak256(
                 abi.encodePacked(
@@ -196,7 +205,7 @@ contract CappedRangeNFT is ERC721 {
                     nonce
                 )
             )
-        ) % 4;
+        ) % 128;
 
         // 128
         nonce++;
@@ -212,7 +221,7 @@ contract CappedRangeNFT is ERC721 {
                         )
                     )
                 ) %
-                4;
+                128;
                 // 128
             nonce++;
         }
@@ -230,4 +239,5 @@ contract CappedRangeNFT is ERC721 {
         require(salePaused, "Sale is already unpaused");
         salePaused = false;
     }
+   
 }
