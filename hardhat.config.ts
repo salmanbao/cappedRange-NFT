@@ -100,7 +100,7 @@ const config: HardhatUserConfig = {
       }
     },
     forknet: {
-      url: "https://mainnet.infura.io/v3/${process.env.INFURA_KEY}",
+      url: `https://mainnet.infura.io/v3/${process.env.INFURA_KEY}`,
     },
     mainnet: {
       ...sharedNetworkConfig,

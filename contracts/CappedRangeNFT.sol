@@ -3,36 +3,40 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/math/SafeMathUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/cryptography/MerkleProofUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/math/SafeMathUpgradeable.sol";
 
-contract CappedRangeNFT is
-    Initializable,
-    ERC721Upgradeable
-    
-{
-     using SafeMathUpgradeable for uint256;
-
+contract CappedRangeNFT is Initializable, ERC721Upgradeable {
+    using SafeMathUpgradeable for uint256;
+    using StringsUpgradeable for uint256;
     // State variables
     address public owner;
     uint256 public constant MAX_SUPPLY = 8192;
     uint256 public constant MINT_FEE = 0.05 ether;
     uint256 public constant OG_MINT_LIMIT = 128;
     uint256 public constant MAX_MINT_LIMIT = 10;
+    // Counter to count total minted NFTs
     uint256 public totalMinted;
+    // Counter for NFT IDs
+    uint256 public mintIdCounter;
+    // Counter for OG mint
+    uint256 public oGMintCounter;
+
     bool public salePaused;
 
     //Merkel tree root for whitelisting addresses
     bytes32 private whiteListMerkleRoot;
+    //Merkel tree root for OG Players addresses
     bytes32 private oGMerkleRoot;
 
     // Base URL string
     string private baseURL;
 
+    mapping(uint256 => bool) public mintedIDs;
 
-    mapping(uint256 => bool) public whitelistNumber;
-
-    mapping(address => bool) public ogListed;
+    mapping(address => bool) public oGPlayersMinted;
 
     enum PhasesEnum {
         OG,
@@ -51,17 +55,18 @@ contract CappedRangeNFT is
     error USER_NOT_WHITELISTED();
     error USER_NOT_OG_PLAYER();
     error MAX_MINT_LIMIT_INCREASE();
-
-  
+    error ALREADY_PAUSED();
+    error ALREADY_UNPAUSED();
+    error ONLY_1_OR_2_ACCEPTABLE();
 
     function initialize() public initializer {
         __ERC721_init("Capped Range", "CR");
         owner = msg.sender;
         currentPhase = PhasesEnum.OG;
         salePaused = true; // Sale paused at deployment
-
-       }
-
+        totalMinted = 0;
+        mintIdCounter = 0;
+    }
 
     // Modifiers
     modifier onlyOwner() {
@@ -80,7 +85,7 @@ contract CappedRangeNFT is
         } else if (no == 2) {
             currentPhase = PhasesEnum.PUBLIC;
         } else {
-            revert("Only 1 or 2 Acceptable");
+            revert ONLY_1_OR_2_ACCEPTABLE();
         }
     }
 
@@ -92,7 +97,7 @@ contract CappedRangeNFT is
     ) public view virtual override returns (string memory) {
         return
             bytes(baseURL).length > 0
-                ? string(abi.encodePacked(baseURL, tokenId))
+                ? string(abi.encodePacked(baseURL, tokenId.toString(), ".json"))
                 : "";
     }
 
@@ -102,6 +107,14 @@ contract CappedRangeNFT is
      */
     function setbaseURI(string memory _uri) external onlyOwner {
         baseURL = _uri;
+    }
+
+    /**
+     * @dev Sets the new Owner of the smart contract.
+     * Can only be called by owner.
+     */
+    function setOwner(address _owner) external onlyOwner {
+        owner = _owner;
     }
 
     /**
@@ -130,14 +143,23 @@ contract CappedRangeNFT is
 
     // Mint function
     function publicMint(uint256 _noOfMint) external payable saleNotPaused {
-        if(_noOfMint > MAX_MINT_LIMIT) revert MAX_MINT_LIMIT_INCREASE();
+        if (_noOfMint > MAX_MINT_LIMIT) revert MAX_MINT_LIMIT_INCREASE();
         if (totalMinted.add(_noOfMint) > MAX_SUPPLY)
             revert MAX_SUPPLY_REACHED();
         if (currentPhase != PhasesEnum.PUBLIC) revert PHASE_NOT_STARTED_YET();
-        if (msg.value < MINT_FEE) revert INSUFFICIENT_FUNDS();
+        if (msg.value < MINT_FEE.mul(_noOfMint)) revert INSUFFICIENT_FUNDS();
         for (uint256 i = 0; i < _noOfMint; i++) {
+            // Counter to count total minted NFTs
             totalMinted++;
-            _safeMint(msg.sender, totalMinted);
+            // Counter for NFT IDs
+            mintIdCounter++;
+
+            while (mintedIDs[mintIdCounter] = true) {
+                mintIdCounter++;
+            }
+
+            mintedIDs[mintIdCounter] = true;
+            _safeMint(msg.sender, mintIdCounter);
         }
     }
 
@@ -146,7 +168,7 @@ contract CappedRangeNFT is
         bytes32[] calldata _merkleProof,
         uint256 _noOfMint
     ) external payable saleNotPaused {
-        if(_noOfMint > MAX_MINT_LIMIT) revert MAX_MINT_LIMIT_INCREASE();
+        if (_noOfMint > MAX_MINT_LIMIT) revert MAX_MINT_LIMIT_INCREASE();
         if (
             MerkleProofUpgradeable.verify(
                 _merkleProof,
@@ -158,14 +180,22 @@ contract CappedRangeNFT is
             revert MAX_SUPPLY_REACHED();
         if (currentPhase != PhasesEnum.WHITELIST)
             revert PHASE_NOT_STARTED_YET();
-        if (msg.value < MINT_FEE) revert INSUFFICIENT_FUNDS();
+
+        if (msg.value < MINT_FEE.mul(_noOfMint)) revert INSUFFICIENT_FUNDS();
         for (uint256 i = 0; i < _noOfMint; i++) {
+            // Counter to count total minted NFTs
             totalMinted++;
-            _safeMint(msg.sender, totalMinted);
+            // Counter for NFT IDs
+            mintIdCounter++;
+            while (mintedIDs[mintIdCounter] = true) {
+                mintIdCounter++;
+            }
+            mintedIDs[mintIdCounter] = true;
+            _safeMint(msg.sender, mintIdCounter);
         }
     }
 
-    function ogMint(bytes32[] calldata _merkleProof) external saleNotPaused {
+    function oGMint(bytes32[] calldata _merkleProof) external saleNotPaused {
         if (
             MerkleProofUpgradeable.verify(
                 _merkleProof,
@@ -173,19 +203,31 @@ contract CappedRangeNFT is
                 keccak256(abi.encodePacked(msg.sender))
             ) == false
         ) revert USER_NOT_OG_PLAYER();
-        if (ogListed[msg.sender] == true) revert ALREADY_MINTED_NFT();
-        if (totalMinted >= OG_MINT_LIMIT) revert OG_MINT_LIMIT_REACHED();
-        uint256 randomNumber = generateRandomNumber();
+
+        if (oGPlayersMinted[msg.sender] == true) revert ALREADY_MINTED_NFT();
+        if (oGMintCounter >= OG_MINT_LIMIT) revert OG_MINT_LIMIT_REACHED();
+        if (totalMinted >= MAX_MINT_LIMIT) revert MAX_SUPPLY_REACHED();
+        uint256 randomId = randomIdGenerator();
         totalMinted++;
-        ogListed[msg.sender] = true;
-        _safeMint(msg.sender, randomNumber);
+        oGMintCounter++;
+        oGPlayersMinted[msg.sender] = true;
+        mintedIDs[randomId] = true;
+        _safeMint(msg.sender, randomId);
     }
 
     // Allow owner to mint NFTs even if sale is paused
     function ownerMint(address _to) external onlyOwner {
-        if (totalMinted > MAX_SUPPLY) revert MAX_SUPPLY_REACHED();
+        if (totalMinted >= MAX_SUPPLY) revert MAX_SUPPLY_REACHED();
+        // Counter to count total minted NFTs
         totalMinted++;
-        _safeMint(_to, totalMinted);
+        // Counter for NFT IDs
+        mintIdCounter++;
+
+        while (mintedIDs[mintIdCounter] = true) {
+            mintIdCounter++;
+        }
+        mintedIDs[mintIdCounter] = true;
+        _safeMint(_to, mintIdCounter);
     }
 
     // Withdraw ether balance to owner
@@ -194,9 +236,9 @@ contract CappedRangeNFT is
         payable(owner).transfer(balance);
     }
 
-    function generateRandomNumber() public returns (uint256) {
-      uint256  nonce = 0;
-        uint256 randomNumber = uint256(
+    function randomIdGenerator() public view returns (uint256) {
+        uint256 nonce = 0;
+        uint256 randomID = uint256(
             keccak256(
                 abi.encodePacked(
                     block.timestamp,
@@ -205,12 +247,12 @@ contract CappedRangeNFT is
                     nonce
                 )
             )
-        ) % 128;
+        ) % MAX_SUPPLY;
 
         // 128
         nonce++;
-        while (whitelistNumber[randomNumber] == true) {
-            randomNumber =
+        while (mintedIDs[randomID] == true) {
+            randomID =
                 uint256(
                     keccak256(
                         abi.encodePacked(
@@ -221,23 +263,23 @@ contract CappedRangeNFT is
                         )
                     )
                 ) %
-                128;
-                // 128
+                MAX_SUPPLY;
             nonce++;
         }
-        whitelistNumber[randomNumber] = true;
-        return randomNumber;
+
+        return randomID;
     }
 
     // Pause and Unpause sale
     function pauseSale() external onlyOwner {
-        require(!salePaused, "Sale is already paused");
+        // require(!salePaused, "Sale is already paused");
+        if (salePaused) revert ALREADY_PAUSED();
         salePaused = true;
     }
 
     function unpauseSale() external onlyOwner {
-        require(salePaused, "Sale is already unpaused");
+        // require(salePaused, "Sale is already unpaused");
+        if (!salePaused) revert ALREADY_UNPAUSED();
         salePaused = false;
     }
-   
 }
